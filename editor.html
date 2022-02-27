@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="de">
+    <head>
+        <meta charset="utf-8"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<link rel="stylesheet" href="/luci-static/bootstrap/cascade.css?v=git-20.054.73019-98ca75e">
+        <title>DaaS - Dymo as a Service</title>
+    </head>
+
+    <body>
+        <header>
+            <h1>DaaS - Dymo as a Service</h1>
+        </header>
+
+        <article id="preview" style="border: 1px solid black; height: 12mm; width: 75mm; overflow: hidden;">
+        </article>
+
+        <ul>
+            <li>
+                <label for="height">Height: </label>
+                <select id="height" onchange="changeSize();">
+                    <option value="6">6mm (1/4")</option>
+                    <option value="9">9mm (3/8")</option>
+                    <option value="12" selected>12mm (1/2")</option>
+                    <option value="19">19mm (3/4")</option>
+                    <option value="24">24mm (1")</option>
+                </select>
+            </li>
+
+            <li>
+                <label for="width">Width: </label>
+                <input type="text" id="width" value="75" oninput="changeSize();">mm
+                <input type="checkbox" id="width-auto" onchange="changeSize();">
+                <label for="width-auto">auto</label>
+            </li>
+            <li>
+                <label for="zoom">Zoom: </label>
+                <input type="text" id="zoom" value="100" oninput="changeSize();">%
+            </li>
+
+            <li>
+                <button onclick="addText()" class="cbi-button  cbi-button-add">Add Text</button>
+                <button onclick="addBarcode()" class="cbi-button  cbi-button-add">Add Barcode</button>
+                <input type="file" id="file-select" name="image" class="cbi-button  cbi-button-add">
+                <button onclick="addImage()" class="cbi-button  cbi-button-add">Add Image</button>
+
+                <button onclick="lblPrint()" class="cbi-button cbi-button-apply important">Print</button>
+            </li>
+        </ul>
+        <hr>
+        <h2>Editor</h2>
+        <div id="empty">Click item to edit</div>
+        <div id="editor" style="display: none">
+            <ul id="generic">
+                <li>
+                    <button class="cbi-button cbi-button-remove" onclick="curEditObj.parentNode.removeChild(curEditObj); curEditObj = null; swtichActive();">Delete</button>
+                </li>
+                <li>
+                    <button class="cbi-button" onmousedown="curEditObj.style.background='cyan'; curEditObj.style.filter='invert(100%)';" onmouseup="curEditObj.style.background='none'; curEditObj.style.filter='';">Ident</button>
+                </li>
+            </ul>
+            <ul id="text" style="display: none">
+                <li>
+                    <label for="text-text">Text: </label>
+                    <input type="text" id="text-text" value="" oninput="curEditObj.dataset.text = this.value; updateText(curEditObj, true);">
+                </li>
+
+                <li>
+                    <label for="text-">Font: </label>
+                    <input type="text" id="text-font" value="" oninput="curEditObj.dataset.font = this.value; updateText(curEditObj, true);">
+                </li>
+
+                <li>
+                    <label for="text-fontsize">Fontsize: </label>
+                    <input type="text" id="text-fontsize" value="" oninput="curEditObj.dataset.size = this.value; updateText(curEditObj, true);">
+                </li>
+            </ul>
+            <ul id="barcode" style="display: none">
+                <li>
+                    <label for="barcode-text">Data: </label>
+                    <input type="text" id="barcode-data" value="" oninput="curEditObj.dataset.data = this.value; updateBarcode(curEditObj, true);">
+                </li>
+                
+                <li>
+                    <label for="barcode-text">Scale X: </label>
+                    <input type="text" id="barcode-sx" value="" oninput="curEditObj.dataset.sx = this.value; updateBarcode(curEditObj, true);">
+                </li>
+                
+                <li>
+                    <label for="barcode-text">Scale Y: </label>
+                    <input type="text" id="barcode-sy" value="" oninput="curEditObj.dataset.sy = this.value; updateBarcode(curEditObj, true);">
+                </li>
+
+                <li>
+                    <label for="barcode-bctype">Type: </label>
+                    <select id="barcode-bctype" onchange="curEditObj.dataset.bctype=this.options[this.selectedIndex].value; updateBarcode(curEditObj, true);">
+                        <option value="qr">QR</option>
+                        <option value="dmtx">DataMatrix</option>
+                        <option value="upc-a">UPC</option>
+                        <option value="ean-8">EAN-8</option>
+                        <option value="ean-13">EAN-13</option>
+                        <option value="code-39">Code 39</option>
+                        <option value="code-128">Code 128</option>
+                        <option value="codabar">Codabar</option>
+                    </select>
+                </li>
+            </ul>
+            <ul id="image" style="display: none">
+                <li>
+                    <label for="image-width">Width: </label>
+                    <input type="text" id="image-width" value="" oninput="curEditObj.dataset.width = this.value; curEditObj.dataset.height = 9999; updateImage(curEditObj, true);">
+                </li>
+                
+                <li>
+                    <label for="image-height">Height: </label>
+                    <input type="text" id="image-height" value="" oninput="curEditObj.dataset.height = this.value; curEditObj.dataset.width = 9999; updateImage(curEditObj, true);">
+                </li>
+            </ul>
+        </div>
+
+        <footer>
+        <a href="https://www.adlerweb.info">Adlerweb//BitBastelei</a>
+        </footer>
+
+        <script>
+            var textUrl     = "/genText.php?";
+            var barcodeUrl  = "/barcode.php?f=png&p=-8&";
+            var imageUrl    = "/img.php";
+            var printUrl    = "/print.php";
+            var lastZoom    = 1;
+            var curEditObj  = null;
+            var lastImgOK   = false;
+            var lwd         = 10;
+            var dpc         = 0;
+
+            function lwdr() {
+                lwd = 10;
+            }
+            setInterval(lwdr, 1000);
+
+            function changeSize() {
+                zoom = Number(document.getElementById('zoom').value);
+                if(zoom == NaN) return;
+                zoom /= 100;
+                ratio = zoom / lastZoom;
+                
+                //Resize Canvas
+                width = Number(document.getElementById('width').value);
+                if(width != NaN) document.getElementById('preview').style.width = (width * zoom)+'mm';
+                height = Number(document.getElementById('height').options[document.getElementById('height').selectedIndex].value);
+                if(height != NaN) document.getElementById('preview').style.height = (height * zoom)+'mm';
+
+                //Calculate mm <-> px
+                rect_p = document.getElementById('preview').getBoundingClientRect();
+                dpc = rect_p.width / document.getElementById('width').value;
+
+                //Auto Resize
+                if(document.getElementById('width-auto').checked) {
+                    mx = 10;
+                    for(var child=document.getElementById('preview').firstChild; child!==null; child=child.nextSibling) {
+                        if(child.nodeName == "#text") continue;
+                        rect_obj = child.getBoundingClientRect();
+                        nmx = rect_obj.width + (rect_obj.left - rect_p.left);
+                        if(nmx > mx) mx = nmx;
+                    }
+                    document.getElementById('width').value = mx / dpc;
+                    document.getElementById('preview').style.width = (mx/dpc)+'mm';
+                }
+
+                //Move and resize elements
+                for(var child=document.getElementById('preview').firstChild; child!==null; child=child.nextSibling) {
+                    if(child.nodeName == "#text") continue;
+
+                    rect_c = child.getBoundingClientRect();
+                    child.style.top    = rect_p.y + ((rect_c.y  - rect_p.y) * ratio) + "px";
+                    child.style.left   = rect_p.x + ((rect_c.x - rect_p.x) * ratio) + "px";
+                    child.style.width  = rect_c.width  * ratio + "px";
+                    child.style.height = rect_c.height * ratio + "px";
+                }
+
+                lastZoom = zoom;
+            }
+
+            function swtichActive(obj) {
+                curEditObj = obj;
+
+                document.getElementById('empty').style.display   = 'block';
+                document.getElementById('editor').style.display  = 'none';
+                document.getElementById('text').style.display    = 'none';
+                document.getElementById('barcode').style.display = 'none';
+                document.getElementById('image').style.display = 'none';
+
+                if(curEditObj == null) return;
+
+                if(curEditObj.dataset.type == "text") {
+                    document.getElementById("text-text").value = curEditObj.dataset.text;
+                    document.getElementById("text-font").value = curEditObj.dataset.font;
+                    document.getElementById("text-fontsize").value = curEditObj.dataset.size;
+
+                    document.getElementById('empty').style.display   = 'none';
+                    document.getElementById('editor').style.display  = 'block';
+                    document.getElementById('text').style.display    = 'block';
+                }else if(curEditObj.dataset.type == "barcode") {
+                    document.getElementById("barcode-data").value = curEditObj.dataset.data;
+                    document.getElementById("barcode-sx").value = curEditObj.dataset.sx;
+                    document.getElementById("barcode-sy").value = curEditObj.dataset.sy;
+                   
+                    var sel = document.getElementById('barcode-bctype');
+                    var opts = sel.options;
+                    for (var opt, j = 0; opt = opts[j]; j++) {
+                        if (opt.value == curEditObj.dataset.bctype) {
+                            sel.selectedIndex = j;
+                            break;
+                        }
+                    }
+
+                    document.getElementById('empty').style.display   = 'none';
+                    document.getElementById('editor').style.display  = 'block';
+                    document.getElementById('barcode').style.display = 'block';
+                }else if(curEditObj.dataset.type == "image") {
+                    document.getElementById("image-width").value = curEditObj.dataset.width;
+                    document.getElementById("image-height").value = curEditObj.dataset.height;
+                    document.getElementById('empty').style.display   = 'none';
+                    document.getElementById('editor').style.display  = 'block';
+                    document.getElementById('image').style.display = 'block';
+                }
+                chkSize(obj);
+            }
+
+            function startDrag(event) {
+                swtichActive(this);
+                let shiftX = event.clientX - this.getBoundingClientRect().left;
+                let shiftY = event.clientY - this.getBoundingClientRect().top;
+            
+                this.style.zIndex = 1000;
+            
+                moveAt(event.pageX, event.pageY);
+            
+                function moveAt(pageX, pageY) {
+                    var rect_preview = document.getElementById('preview').getBoundingClientRect();
+                    var rect_obj = curEditObj.getBoundingClientRect();
+
+                    newX = pageX - shiftX;
+                    newY = pageY - shiftY;
+
+                    maxX = rect_preview.left + rect_preview.width  - rect_obj.width;
+                    maxY = rect_preview.top +  rect_preview.height - rect_obj.height;
+
+                    if(newX > maxX && !document.getElementById('width-auto').checked) {
+                        newX = maxX;
+                    }
+                    if(newY > maxY) newY = maxY;
+
+                    if(newX < rect_preview.left) newX = rect_preview.left;
+                    if(newY < rect_preview.top)  newY = rect_preview.top;
+
+                    curEditObj.style.left = newX + 'px';
+                    curEditObj.style.top = newY + 'px';
+
+                    changeSize();
+                }
+            
+                function onMouseMove(event) {
+                    moveAt(event.pageX, event.pageY);
+                }
+            
+                document.addEventListener('mousemove', onMouseMove);
+            
+                document.onmouseup = function() {
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.onmouseup = null;
+                };
+        
+            };
+
+            document.onkeydown = function(evt) {
+                evt = evt || window.event;
+                if (evt.keyCode == 27) {
+                    document.onmouseup();
+                }
+            };
+
+            function addObj() {
+                var rect_preview = document.getElementById('preview').getBoundingClientRect();
+                var newObj = document.createElement("img");
+                newObj.style.position='absolute';
+                newObj.style.top=rect_preview.top;
+                newObj.style.left=rect_preview.left;
+                newObj.ondragstart = function() { return false; };
+                newObj.onmousedown = startDrag;
+                return newObj;
+            }
+
+            function addText() {
+                newObj = addObj();
+                newObj.src = textUrl+"size=25&font=0&r=0&g=0&b=0&text=TEXT";
+                newObj.dataset.type = "text";
+                newObj.dataset.text = "TEXT";
+                newObj.dataset.size = "25";
+                newObj.dataset.font = "0";
+                document.getElementById("preview").appendChild(newObj);
+                swtichActive(newObj);
+                
+            }
+            function updateText(obj, chk) {
+                if(chk) {
+                    obj.onload = function() {chkSize(obj);}
+                }
+                obj.style.width='';
+                obj.style.height='';
+                obj.src = textUrl+"size="+obj.dataset.size+"&font="+obj.dataset.font+"&r=0&g=0&b=0&text="+obj.dataset.text;
+            }
+
+            function addBarcode() {
+                newObj = addObj();
+                newObj.src = barcodeUrl+"s=qr&d=12345&sf=2";
+                newObj.dataset.type = "barcode";
+                newObj.dataset.data = "12345";
+                newObj.dataset.sx = "2";
+                newObj.dataset.sy = "2";
+                newObj.dataset.bctype = "qr";
+                document.getElementById("preview").appendChild(newObj);
+                swtichActive(newObj);
+            }
+            function updateBarcode(obj, chk=true) {
+                if(chk) {
+                    obj.onload = function() {chkSize(obj);}
+                }
+                obj.style.width='';
+                obj.style.height='';
+                obj.src = barcodeUrl+"s="+obj.dataset.bctype+"&sx="+obj.dataset.sx+"&sy="+obj.dataset.sy+"&d="+obj.dataset.data;
+            }
+
+            function addImage() {
+                var file = document.getElementById('file-select').files[0];
+                var formData = new FormData();
+                if (!file.type.match('image.*')) {
+                    console.log("No image");
+                    return;
+                }
+
+                formData.append('image', file, file.name);
+                formData.append('height', document.getElementById('height').value);
+                formData.append('width', document.getElementById('width').value);
+
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', imageUrl, true);
+                
+                xhr.onload = function () {
+                    if (xhr.status === 200) {
+                        // File(s) uploaded.
+                        addImageCanvas(xhr.responseText);
+                    } else {
+                        alert('An error occurred!');
+                    }
+                };
+                xhr.send(formData);
+            }
+            function addImageCanvas(data) {
+                newObj = addObj();
+                newObj.dataset.type = "image";
+                newObj.dataset.data = data;
+                newObj.dataset.height = -1;
+                newObj.dataset.width  = -1;
+                newObj.src = "data:image/png;base64,"+data;
+                document.getElementById("preview").appendChild(newObj);
+                swtichActive(newObj);
+            }
+            function updateImage(obj, chk=true) {
+                rect_obj = obj.getBoundingClientRect();
+                if(obj.dataset.width != rect_obj.width || obj.dataset.height != rect_obj.height) {
+                    msy = (obj.dataset.height / rect_obj.height);
+                    msx = (obj.dataset.width / rect_obj.width);
+                    msf=msy;
+                    if(msx < msf) msf=msx;
+
+                    obj.style.width  = (rect_obj.width *msf)+'px';
+                    obj.style.height = (rect_obj.height*msf)+'px';
+
+                    obj.dataset.height = (rect_obj.width *msf);
+                    obj.dataset.width  = (rect_obj.height*msf);
+
+                    swtichActive(obj);
+                }
+            }
+
+            function chkSize(obj) {
+                if(obj.complete) {
+                    rect_p = document.getElementById('preview').getBoundingClientRect();
+                    rect_obj = obj.getBoundingClientRect();
+                    
+                    chg = false;
+                    if(obj.dataset.type == 'text') {
+                        if(rect_obj.height > rect_p.height || rect_obj.width > rect_p.width) {
+                            msy = (rect_p.height / rect_obj.height);
+                            msx = (rect_p.width / rect_obj.width);
+
+                            msf=msy;
+                            if(msx < msf && !document.getElementById('width-auto').checked) msf=msx;
+                            ms = Math.floor(obj.dataset.size * msf)
+                            obj.dataset.size = ms;
+
+                            rect_obj = obj.getBoundingClientRect();
+                            document.getElementById("text-fontsize").value = obj.dataset.size;
+                            console.log('object size exceeded - scaled to ' + obj.dataset.size);
+                            chg = true;
+                        }
+
+                        if(rect_obj.x + rect_obj.width > rect_p.x + rect_p.width || rect_obj.y + rect_obj.height > rect_p.y + rect_p.height) {
+                            if(rect_obj.x + rect_obj.width > rect_p.x + rect_p.width && !document.getElementById('width-auto').checked) obj.style.left = rect_p.x + rect_p.width - (rect_obj.width * msf);
+                            if(rect_obj.y + rect_obj.height > rect_p.y + rect_p.height) obj.style.top = rect_p.y + rect_p.height - (rect_obj.height * msf);
+                            chg = true;
+                        }
+
+                        if(chg) {
+                            updateText(obj, false);
+                            changeSize()
+                        }
+                    }else if(obj.dataset.type == 'barcode') {
+                        if(rect_obj.height > rect_p.height) {
+                            obj.dataset.sy = obj.dataset.sy * (rect_p.height / rect_obj.height);
+                            document.getElementById("barcode-sy").value = obj.dataset.sy;
+                            console.log('object height exceeded - scaled to ' + obj.dataset.sy);
+                            chg = true;
+                        }
+                        
+                        if(rect_obj.width > rect_p.width) {
+                            if(!document.getElementById('width-auto').checked) obj.dataset.sx = obj.dataset.sx * (rect_p.width / rect_obj.width);
+                            document.getElementById("barcode-sx").value = obj.dataset.sx;
+                            console.log('object width exceeded - scaled to ' + obj.dataset.sx);
+                            chg = true;
+                        }
+
+                        if(rect_obj.y + (rect_obj.height * (rect_p.height / rect_obj.height)) > rect_p.y + rect_p.height) {
+                            obj.style.top = rect_p.y + rect_p.height - (rect_obj.height * (rect_p.height / rect_obj.height));
+                            chg = true;
+                        }
+
+                        if(rect_obj.x + (rect_obj.width * (rect_p.width / rect_obj.width)) > rect_p.x + rect_p.width) {
+                            if(!document.getElementById('width-auto').checked) obj.style.left = rect_p.x + rect_p.width - (rect_obj.width * (rect_p.width / rect_obj.width));
+                            chg = true;
+                        }
+
+                        if(chg) {
+                            updateBarcode(obj, false);
+                            changeSize();
+                        }
+                    }else if(obj.dataset.type == 'image') {
+                        if(rect_obj.height > rect_p.height || rect_obj.width > rect_p.width) {
+                            msy = (rect_p.height / rect_obj.height);
+                            msx = (rect_p.width / rect_obj.width);
+
+                            msf=msy;
+                            if(msx < msf && !document.getElementById('width-auto').checked) msf=msx;
+
+                            obj.style.width  = (rect_obj.width *msf)+'px';
+                            obj.style.height = (rect_obj.height*msf)+'px';
+
+                            obj.dataset.height = (rect_obj.width *msf);
+                            obj.dataset.width  = (rect_obj.height*msf);
+
+                            rect_obj = obj.getBoundingClientRect();
+                        }
+
+                        if(rect_obj.x + rect_obj.width  > rect_p.x + rect_p.width  && !document.getElementById('width-auto').checked)  obj.style.left = rect_p.x + rect_p.width  - rect_obj.width;
+                        if(rect_obj.y + rect_obj.height > rect_p.y + rect_p.height) obj.style.top  = rect_p.y + rect_p.height - rect_obj.height;
+
+                        changeSize();
+                    }
+                }else if(lwd>0) {
+                    lwd--;
+                    obj.onload = function() {chkSize(obj);};
+                }
+            }
+
+            function lblPrint() {
+                var data = new Object();
+                data['height'] = document.getElementById('height').value;
+                data['width'] = document.getElementById('width').value;
+                data['items'] = [];
+
+                rect_p = document.getElementById('preview').getBoundingClientRect();
+                ix = rect_p.x;
+                iy = rect_p.y;
+                tx = rect_p.width;
+                ty = rect_p.height;
+
+                for(var child=document.getElementById('preview').firstChild; child!==null; child=child.nextSibling) {
+                    if(child.nodeName == "#text") continue;
+                    co = new Object();
+
+                    co['type'] = child.dataset.type;
+                    co['src'] = child.src;
+
+                    rect_obj = child.getBoundingClientRect();
+
+                    co['ix'] = 1 / tx * (rect_obj.x - ix);
+                    co['iy'] = 1 / ty * (rect_obj.y - iy);
+                    co['tx'] = 1 / tx * rect_obj.width;
+                    co['ty'] = 1 / ty * rect_obj.height;
+
+                    data['items'].push(co);
+                }
+
+                console.log(JSON.stringify(data));
+
+                var formData = new FormData();
+                
+                formData.append('data', JSON.stringify(data));
+
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', printUrl, true);
+                
+                xhr.onload = function () {
+                    if (xhr.status === 200) {
+                        alert(xhr.responseText);
+                    } else {
+                        alert('An error occurred!');
+                    }
+                };
+                xhr.send(formData);
+            }
+        </script>
+    </body>
+</html>
